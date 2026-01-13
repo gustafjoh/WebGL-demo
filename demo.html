@@ -24,7 +24,8 @@
         
         #canvas {
             display: block;
-            background: linear-gradient(135deg, #000011 0%, #001133 100%);
+            background: linear-gradient(135deg, #000011 0%, #001133 50%, #110022 100%);
+            filter: brightness(1.1);
         }
         
         #info {
@@ -253,7 +254,7 @@
         
         // Create particles for visual effect
         const particles = [];
-        const particleCount = 2000;
+        const particleCount = 5000;
         
         function generateParticles() {
             for (let i = 0; i < particleCount; i++) {
@@ -313,39 +314,98 @@
             if (!audioContext) return;
             
             const now = audioContext.currentTime;
-            const duration = 16; // 16 second loop
+            const duration = 32; // 32 second loop for richer progression
             
-            // Create a synth sound
-            for (let beat = 0; beat < 32; beat++) {
-                const time = now + (beat * duration / 32);
+            // Create multiple layers of synth sounds
+            for (let beat = 0; beat < 64; beat++) {
+                const time = now + (beat * duration / 64);
                 
-                // Bassline
-                const bassFreq = [55, 55, 82, 82, 110, 110, 82, 82][beat % 8];
-                playNote(bassFreq, time, 0.2, 0.5, 'sine');
+                // Bassline - deeper and punchier
+                const bassPattern = [55, 55, 82, 82, 110, 110, 82, 82, 
+                                    74, 74, 98, 98, 123, 123, 98, 98][beat % 16];
+                playNote(bassPattern, time, 0.15, 0.45, 'sine', 0.4);
                 
-                // Lead melody
+                // Sub-bass for low end
+                if (beat % 8 === 0) {
+                    playNote(bassPattern * 0.5, time, 0.1, 0.7, 'sine', 0.25);
+                }
+                
+                // Lead melody - more dynamic
+                if (beat % 2 === 0) {
+                    const leadPattern = [440, 494, 554, 587, 659, 587, 523, 587,
+                                        493, 554, 587, 659, 740, 659, 587, 659][Math.floor(beat / 2) % 16];
+                    playNote(leadPattern * 2, time + 0.05, 0.1, 0.35, 'triangle', 0.2);
+                }
+                
+                // Harmony - adds richness
                 if (beat % 4 === 0) {
-                    const leadFreq = [440, 494, 554, 587, 659, 440, 523, 587][Math.floor(beat / 4) % 8];
-                    playNote(leadFreq * 2, time + 0.1, 0.1, 0.3, 'triangle');
+                    const harmonyFreq = [330, 370, 415, 440, 494, 440, 392, 440][Math.floor(beat / 4) % 8];
+                    playNote(harmonyFreq, time + 0.1, 0.08, 0.4, 'sine', 0.15);
+                }
+                
+                // Bright pad - every 8 beats for atmosphere
+                if (beat % 8 === 0) {
+                    const padFreq = [261.63, 293.66, 329.63, 349.23][Math.floor(beat / 8) % 4];
+                    playNote(padFreq, time, 0.2, 1.5, 'sine', 0.1);
+                }
+                
+                // Percussion synth - adds rhythm
+                if (beat % 2 === 0) {
+                    playPercussion(time, beat % 8);
                 }
             }
         }
         
-        function playNote(freq, time, attack, duration, waveform) {
+        function playPercussion(time, beatPos) {
             if (!audioContext) return;
             
             try {
                 const osc = audioContext.createOscillator();
                 const env = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
+                
+                osc.frequency.setValueAtTime(200, time);
+                osc.frequency.exponentialRampToValueAtTime(40, time + 0.08);
+                
+                filter.type = 'highpass';
+                filter.frequency.value = 100;
+                
+                env.gain.setValueAtTime(0.2, time);
+                env.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+                
+                osc.connect(filter);
+                filter.connect(env);
+                env.connect(audioContext.destination);
+                
+                osc.start(time);
+                osc.stop(time + 0.1);
+            } catch (e) {
+                // Audio context might not be ready
+            }
+        }
+        
+        function playNote(freq, time, attack, duration, waveform, volume = 0.3) {
+            if (!audioContext) return;
+            
+            try {
+                const osc = audioContext.createOscillator();
+                const env = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
                 
                 osc.type = waveform;
                 osc.frequency.value = freq;
                 
+                // Add filter for richer sound
+                filter.type = 'lowpass';
+                filter.frequency.value = 5000;
+                filter.Q.value = 1;
+                
                 env.gain.setValueAtTime(0, time);
-                env.gain.linearRampToValueAtTime(0.3, time + attack);
+                env.gain.linearRampToValueAtTime(volume, time + attack);
                 env.gain.exponentialRampToValueAtTime(0.01, time + duration);
                 
-                osc.connect(env);
+                osc.connect(filter);
+                filter.connect(env);
                 env.connect(audioContext.destination);
                 
                 osc.start(time);
@@ -368,27 +428,35 @@
                 p.y += p.vy;
                 p.z += p.vz;
                 
-                // Spiral attractor
+                // Spiral attractor with enhanced motion
                 const dist = Math.sqrt(p.x*p.x + p.z*p.z);
                 const angle = Math.atan2(p.z, p.x);
                 
-                const targetX = Math.cos(angle + elapsed * 2) * (dist * 0.99);
-                const targetZ = Math.sin(angle + elapsed * 2) * (dist * 0.99);
+                const spiralSpeed = 3 + Math.sin(elapsed * 0.5) * 1.5;
+                const targetX = Math.cos(angle + elapsed * spiralSpeed) * (dist * 0.98);
+                const targetZ = Math.sin(angle + elapsed * spiralSpeed) * (dist * 0.98);
                 
-                p.vx += (targetX - p.x) * 0.001;
-                p.vz += (targetZ - p.z) * 0.001;
+                p.vx += (targetX - p.x) * 0.0015;
+                p.vz += (targetZ - p.z) * 0.0015;
                 
-                p.vy += Math.sin(elapsed + p.life) * 0.001;
+                // Wave motion
+                p.vy += Math.sin(elapsed + p.life) * 0.0015 + Math.cos(elapsed * 1.5 + p.life * 3) * 0.001;
                 
-                // Damping
-                p.vx *= 0.99;
-                p.vy *= 0.99;
-                p.vz *= 0.99;
+                // Less damping for more dynamism
+                p.vx *= 0.992;
+                p.vy *= 0.992;
+                p.vz *= 0.992;
                 
-                // Color animation
-                p.color[0] = 0.5 + 0.5 * Math.sin(elapsed + p.life * 10);
-                p.color[1] = 0.3 + 0.7 * Math.sin(elapsed * 0.5 + p.life * 5);
-                p.color[2] = 0.8 + 0.2 * Math.cos(elapsed * 1.5 + p.life * 8);
+                // Enhanced color animation with more variation
+                p.color[0] = 0.4 + 0.6 * Math.sin(elapsed + p.life * 10);
+                p.color[1] = 0.2 + 0.8 * Math.sin(elapsed * 0.7 + p.life * 5);
+                p.color[2] = 0.7 + 0.3 * Math.cos(elapsed * 1.2 + p.life * 8);
+                
+                // Add some sparkle with brightness
+                const sparkle = Math.sin(elapsed * 5 + p.life * 20) * 0.5 + 0.5;
+                p.color[0] *= 0.8 + sparkle * 0.2;
+                p.color[1] *= 0.8 + sparkle * 0.2;
+                p.color[2] *= 0.8 + sparkle * 0.2;
             });
             
             updateBuffers();
@@ -418,19 +486,26 @@
             );
             
             let modelMatrix = createIdentityMatrix();
-            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.5, 0, 1, 0);
-            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.3, 1, 0, 0);
-            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.2, 0, 0, 1);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.35, 0, 1, 0);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.25, 1, 0, 0);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.15, 0, 0, 1);
             
             gl.uniformMatrix4fv(projMatrixLoc, false, projMatrix);
             gl.uniformMatrix4fv(viewMatrixLoc, false, viewMatrix);
             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
             
-            // Clear and draw
-            gl.clearColor(0, 0, 0.05, 1);
+            // Clear and draw with enhanced visual quality
+            gl.clearColor(0, 0, 0.08, 1);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             
+            // Draw particles with additive blending for glow effect
             gl.drawElements(gl.POINTS, indices.length, gl.UNSIGNED_SHORT, 0);
+            
+            // Draw second pass for enhanced glow
+            if (frameCount % 2 === 0) {
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+                gl.drawElements(gl.POINTS, indices.length, gl.UNSIGNED_SHORT, 0);
+            }
             
             // Show credits at the end
             if (elapsed > 14) {
