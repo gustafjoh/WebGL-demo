@@ -316,7 +316,6 @@
         
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-        gl.enable(gl.PROGRAM_POINT_SIZE);
         
         // Music generation
         function generateMusic() {
@@ -437,35 +436,51 @@
                 p.y += p.vy;
                 p.z += p.vz;
                 
-                // Spiral attractor with enhanced motion
-                const dist = Math.sqrt(p.x*p.x + p.z*p.z);
+                // Distance to center (black hole)
+                const dist = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+                
+                // Black hole accretion - pulls particles toward center with gravity
+                if (dist > 0.1) {
+                    const gravityStrength = 0.15 / (dist * dist + 0.1);
+                    const dirX = -p.x / dist;
+                    const dirY = -p.y / dist;
+                    const dirZ = -p.z / dist;
+                    
+                    p.vx += dirX * gravityStrength;
+                    p.vy += dirY * gravityStrength;
+                    p.vz += dirZ * gravityStrength;
+                }
+                
+                // Angular momentum - creates whirling motion
                 const angle = Math.atan2(p.z, p.x);
+                const xyDist = Math.sqrt(p.x*p.x + p.z*p.z);
                 
-                const spiralSpeed = 3 + Math.sin(elapsed * 0.5) * 1.5;
-                const targetX = Math.cos(angle + elapsed * spiralSpeed) * (dist * 0.98);
-                const targetZ = Math.sin(angle + elapsed * spiralSpeed) * (dist * 0.98);
+                if (xyDist > 0.2) {
+                    const angularForce = 0.008 * (1.0 / (xyDist + 0.5));
+                    p.vx += Math.sin(angle) * angularForce * xyDist;
+                    p.vz -= Math.cos(angle) * angularForce * xyDist;
+                }
                 
-                p.vx += (targetX - p.x) * 0.0015;
-                p.vz += (targetZ - p.z) * 0.0015;
+                // Slight turbulence
+                p.vy += Math.sin(elapsed * 2 + p.life * 5) * 0.0008;
                 
-                // Wave motion
-                p.vy += Math.sin(elapsed + p.life) * 0.0015 + Math.cos(elapsed * 1.5 + p.life * 3) * 0.001;
+                // Friction increases near center (event horizon effect)
+                const friction = Math.max(0.97, 0.985 + Math.min(0.015, dist * 0.01));
+                p.vx *= friction;
+                p.vy *= friction;
+                p.vz *= friction;
                 
-                // Less damping for more dynamism
-                p.vx *= 0.992;
-                p.vy *= 0.992;
-                p.vz *= 0.992;
+                // Color changes: blue/cyan when far, red/orange as approaching center
+                const proximityToCenter = Math.max(0, Math.min(1, (5 - dist) / 5));
+                p.color[0] = 0.3 + proximityToCenter * 0.8 + 0.3 * Math.sin(elapsed + p.life);
+                p.color[1] = 0.2 + (1 - proximityToCenter) * 0.8 + 0.2 * Math.cos(elapsed * 0.7);
+                p.color[2] = 0.8 - proximityToCenter * 0.5 + 0.2 * Math.sin(elapsed * 1.5);
                 
-                // Enhanced color animation with more variation
-                p.color[0] = 0.4 + 0.6 * Math.sin(elapsed + p.life * 10);
-                p.color[1] = 0.2 + 0.8 * Math.sin(elapsed * 0.7 + p.life * 5);
-                p.color[2] = 0.7 + 0.3 * Math.cos(elapsed * 1.2 + p.life * 8);
-                
-                // Add some sparkle with brightness
-                const sparkle = Math.sin(elapsed * 5 + p.life * 20) * 0.5 + 0.5;
-                p.color[0] *= 0.8 + sparkle * 0.2;
-                p.color[1] *= 0.8 + sparkle * 0.2;
-                p.color[2] *= 0.8 + sparkle * 0.2;
+                // Brightness increases near center
+                const brightness = 0.8 + proximityToCenter * 0.2 + Math.sin(elapsed * 4 + p.life * 15) * 0.1;
+                p.color[0] *= brightness;
+                p.color[1] *= brightness;
+                p.color[2] *= brightness;
             });
             
             updateBuffers();
@@ -503,18 +518,11 @@
             gl.uniformMatrix4fv(viewMatrixLoc, false, viewMatrix);
             gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
             
-            // Clear and draw with enhanced visual quality
+            // Clear and draw
             gl.clearColor(0, 0, 0.08, 1);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             
-            // Draw particles with additive blending for glow effect
             gl.drawElements(gl.POINTS, indices.length, gl.UNSIGNED_SHORT, 0);
-            
-            // Draw second pass for enhanced glow
-            if (frameCount % 2 === 0) {
-                gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-                gl.drawElements(gl.POINTS, indices.length, gl.UNSIGNED_SHORT, 0);
-            }
             
             // Show credits at the end
             if (elapsed > 14) {
