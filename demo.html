@@ -89,6 +89,14 @@
         
         let audioContext = null;
         let audioInitialized = false;
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        
+        // Track mouse movement
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
         
         function initAudio() {
             if (audioInitialized) return;
@@ -650,6 +658,31 @@
                 p.y += p.vy;
                 p.z += p.vz;
                 
+                // Convert mouse screen coordinates to world coordinates
+                const mouseScreenX = (mouseX / canvas.width) * 2 - 1;
+                const mouseScreenY = -(mouseY / canvas.height) * 2 + 1;
+                
+                // Create a repulsive force from mouse position
+                const mouseInfluenceRange = 8;
+                const mouseWorldX = mouseScreenX * 3;
+                const mouseWorldY = mouseScreenY * 2;
+                const mouseWorldZ = -5; // Assume mouse is at a distance in front of camera
+                
+                const dxMouse = p.x - mouseWorldX;
+                const dyMouse = p.y - mouseWorldY;
+                const dzMouse = p.z - mouseWorldZ;
+                const distToMouse = Math.sqrt(dxMouse*dxMouse + dyMouse*dyMouse + dzMouse*dzMouse);
+                
+                // Repulsive force - particles are pushed away from mouse
+                if (distToMouse < mouseInfluenceRange) {
+                    const mouseForceStrength = (1 - distToMouse / mouseInfluenceRange) * 0.25;
+                    if (distToMouse > 0.01) {
+                        p.vx += (dxMouse / distToMouse) * mouseForceStrength;
+                        p.vy += (dyMouse / distToMouse) * mouseForceStrength;
+                        p.vz += (dzMouse / distToMouse) * mouseForceStrength;
+                    }
+                }
+                
                 const dist = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
                 
                 if (dist > 0.1) {
@@ -696,8 +729,29 @@
                 p.x = Math.cos(p.angle) * p.radius;
                 p.z = Math.sin(p.angle) * p.radius;
                 
+                // Mouse influence on orbit particles
+                const mouseScreenX = (mouseX / canvas.width) * 2 - 1;
+                const mouseScreenY = -(mouseY / canvas.height) * 2 + 1;
+                const mouseWorldX = mouseScreenX * 3;
+                const mouseWorldY = mouseScreenY * 2;
+                const mouseWorldZ = -5;
+                
+                const dxMouse = p.x - mouseWorldX;
+                const dyMouse = p.y - mouseWorldY;
+                const dzMouse = p.z - mouseWorldZ;
+                const distToMouse = Math.sqrt(dxMouse*dxMouse + dyMouse*dyMouse + dzMouse*dzMouse);
+                
                 const beatInfluence = Math.sin(beatPhase * Math.PI * 2 / 64) * 0.3;
                 p.y += Math.sin(elapsed * 0.5 + p.radius) * 0.01 + beatInfluence * 0.02;
+                
+                // Add mouse deflection
+                if (distToMouse < 8) {
+                    const mouseForceStrength = (1 - distToMouse / 8) * 0.15;
+                    if (distToMouse > 0.01) {
+                        p.angle += (dxMouse / distToMouse) * mouseForceStrength * 0.05;
+                        p.y += (dyMouse / distToMouse) * mouseForceStrength * 0.03;
+                    }
+                }
                 
                 p.color[0] = 0.2 + Math.sin(elapsed * 1.5 + p.angle) * 0.8;
                 p.color[1] = 0.3 + Math.cos(elapsed * 1.2 + p.angle) * 0.7;
