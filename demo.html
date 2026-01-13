@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON VORTEX - A Demoscene Production</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            color: #0ff;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        
+        #canvas {
+            display: block;
+            background: linear-gradient(135deg, #000011 0%, #001133 100%);
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #0ff;
+            text-shadow: 0 0 10px #0ff;
+            z-index: 10;
+            max-width: 300px;
+            line-height: 1.4;
+        }
+        
+        #credits {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            font-size: 11px;
+            color: #f0f;
+            text-shadow: 0 0 10px #f0f;
+            text-align: right;
+            opacity: 0;
+            transition: opacity 1s;
+        }
+        
+        #credits.show {
+            opacity: 1;
+        }
+        
+        .glow {
+            text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div id="info">
+        <div class="glow">NEON VORTEX</div>
+        <div>A Demoscene Experience</div>
+        <div style="margin-top: 10px; font-size: 10px; opacity: 0.7;">
+            Click to unmute audio
+        </div>
+    </div>
+    
+    <div id="credits" class="glow">
+        <div>═════════════════════</div>
+        <div>NEON VORTEX</div>
+        <div>A Demoscene Experience</div>
+        <div style="margin-top: 5px; font-size: 10px;">Year 2026</div>
+        <div style="margin-top: 5px;">Concept & Code</div>
+        <div style="font-size: 10px;">Pure WebGL Magic</div>
+        <div style="margin-top: 5px;">Greetings to all demo lovers</div>
+        <div style="margin-top: 5px;">═════════════════════</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const gl = canvas.getContext('webgl', { antialias: true, alpha: false });
+        
+        let audioContext = null;
+        let audioInitialized = false;
+        
+        function initAudio() {
+            if (audioInitialized) return;
+            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Resume audio context if suspended
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            audioInitialized = true;
+            generateMusic();
+        }
+        
+        document.addEventListener('click', initAudio);
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // Vertex Shader
+        const vertexShader = `
+            attribute vec3 position;
+            attribute vec3 color;
+            
+            uniform mat4 projMatrix;
+            uniform mat4 viewMatrix;
+            uniform mat4 modelMatrix;
+            
+            varying vec3 vColor;
+            varying float vDepth;
+            
+            void main() {
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                gl_Position = projMatrix * viewMatrix * worldPos;
+                vColor = color;
+                vDepth = gl_Position.z;
+            }
+        `;
+        
+        // Fragment Shader with glow effect
+        const fragmentShader = `
+            precision highp float;
+            
+            varying vec3 vColor;
+            varying float vDepth;
+            
+            void main() {
+                float glow = 0.5 + 0.5 * sin(vDepth * 2.0);
+                gl_FragColor = vec4(vColor * (1.0 + glow * 0.5), 1.0);
+            }
+        `;
+        
+        function compileShader(source, type) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                return null;
+            }
+            return shader;
+        }
+        
+        const program = gl.createProgram();
+        gl.attachShader(program, compileShader(vertexShader, gl.VERTEX_SHADER));
+        gl.attachShader(program, compileShader(fragmentShader, gl.FRAGMENT_SHADER));
+        gl.linkProgram(program);
+        
+        // Get uniform locations
+        const projMatrixLoc = gl.getUniformLocation(program, 'projMatrix');
+        const viewMatrixLoc = gl.getUniformLocation(program, 'viewMatrix');
+        const modelMatrixLoc = gl.getUniformLocation(program, 'modelMatrix');
+        
+        const positionLoc = gl.getAttribLocation(program, 'position');
+        const colorLoc = gl.getAttribLocation(program, 'color');
+        
+        gl.useProgram(program);
+        
+        // Matrix utilities
+        function createPerspectiveMatrix(fov, aspect, near, far) {
+            const f = 1.0 / Math.tan(fov / 2.0);
+            const nf = 1.0 / (near - far);
+            
+            return [
+                f / aspect, 0, 0, 0,
+                0, f, 0, 0,
+                0, 0, (far + near) * nf, -1,
+                0, 0, (2 * far * near) * nf, 0
+            ];
+        }
+        
+        function createIdentityMatrix() {
+            return [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+            ];
+        }
+        
+        function rotateMatrix(m, angle, x, y, z) {
+            const c = Math.cos(angle);
+            const s = Math.sin(angle);
+            
+            const rotMat = createIdentityMatrix();
+            
+            if (x) {
+                rotMat[5] = c; rotMat[6] = s;
+                rotMat[9] = -s; rotMat[10] = c;
+            } else if (y) {
+                rotMat[0] = c; rotMat[2] = -s;
+                rotMat[8] = s; rotMat[10] = c;
+            } else if (z) {
+                rotMat[0] = c; rotMat[1] = s;
+                rotMat[4] = -s; rotMat[5] = c;
+            }
+            
+            return multiplyMatrices(m, rotMat);
+        }
+        
+        function multiplyMatrices(a, b) {
+            const result = new Array(16);
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    result[i + j * 4] = 0;
+                    for (let k = 0; k < 4; k++) {
+                        result[i + j * 4] += a[i + k * 4] * b[k + j * 4];
+                    }
+                }
+            }
+            return result;
+        }
+        
+        function createViewMatrix(eyeX, eyeY, eyeZ, centerX, centerY, centerZ) {
+            const f = [centerX - eyeX, centerY - eyeY, centerZ - eyeZ];
+            const fLen = Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+            f[0] /= fLen; f[1] /= fLen; f[2] /= fLen;
+            
+            const up = [0, 1, 0];
+            const s = [f[1]*up[2] - f[2]*up[1], f[2]*up[0] - f[0]*up[2], f[0]*up[1] - f[1]*up[0]];
+            const sLen = Math.sqrt(s[0]*s[0] + s[1]*s[1] + s[2]*s[2]);
+            s[0] /= sLen; s[1] /= sLen; s[2] /= sLen;
+            
+            const u = [s[1]*f[2] - s[2]*f[1], s[2]*f[0] - s[0]*f[2], s[0]*f[1] - s[1]*f[0]];
+            
+            return [
+                s[0], u[0], -f[0], 0,
+                s[1], u[1], -f[1], 0,
+                s[2], u[2], -f[2], 0,
+                -s[0]*eyeX - s[1]*eyeY - s[2]*eyeZ,
+                -u[0]*eyeX - u[1]*eyeY - u[2]*eyeZ,
+                f[0]*eyeX + f[1]*eyeY + f[2]*eyeZ, 1
+            ];
+        }
+        
+        // Create particles for visual effect
+        const particles = [];
+        const particleCount = 2000;
+        
+        function generateParticles() {
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.random() * 5;
+                const y = (Math.random() - 0.5) * 8;
+                
+                particles.push({
+                    x: Math.cos(angle) * radius,
+                    y: y,
+                    z: Math.sin(angle) * radius,
+                    vx: (Math.random() - 0.5) * 0.02,
+                    vy: (Math.random() - 0.5) * 0.02,
+                    vz: (Math.random() - 0.5) * 0.02,
+                    life: Math.random(),
+                    color: [
+                        0.2 + Math.random() * 0.8,
+                        0.1 + Math.random() * 0.9,
+                        0.3 + Math.random() * 0.7
+                    ]
+                });
+            }
+        }
+        
+        generateParticles();
+        
+        // Create vertex buffers
+        const positions = [];
+        const colors = [];
+        const indices = [];
+        
+        function updateBuffers() {
+            positions.length = 0;
+            colors.length = 0;
+            indices.length = 0;
+            
+            particles.forEach((p, i) => {
+                positions.push(p.x, p.y, p.z);
+                const col = p.color;
+                colors.push(col[0], col[1], col[2]);
+                indices.push(i);
+            });
+        }
+        
+        const positionBuffer = gl.createBuffer();
+        const colorBuffer = gl.createBuffer();
+        const indexBuffer = gl.createBuffer();
+        
+        gl.enableVertexAttribArray(positionLoc);
+        gl.enableVertexAttribArray(colorLoc);
+        
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        
+        // Music generation
+        function generateMusic() {
+            if (!audioContext) return;
+            
+            const now = audioContext.currentTime;
+            const duration = 16; // 16 second loop
+            
+            // Create a synth sound
+            for (let beat = 0; beat < 32; beat++) {
+                const time = now + (beat * duration / 32);
+                
+                // Bassline
+                const bassFreq = [55, 55, 82, 82, 110, 110, 82, 82][beat % 8];
+                playNote(bassFreq, time, 0.2, 0.5, 'sine');
+                
+                // Lead melody
+                if (beat % 4 === 0) {
+                    const leadFreq = [440, 494, 554, 587, 659, 440, 523, 587][Math.floor(beat / 4) % 8];
+                    playNote(leadFreq * 2, time + 0.1, 0.1, 0.3, 'triangle');
+                }
+            }
+        }
+        
+        function playNote(freq, time, attack, duration, waveform) {
+            if (!audioContext) return;
+            
+            try {
+                const osc = audioContext.createOscillator();
+                const env = audioContext.createGain();
+                
+                osc.type = waveform;
+                osc.frequency.value = freq;
+                
+                env.gain.setValueAtTime(0, time);
+                env.gain.linearRampToValueAtTime(0.3, time + attack);
+                env.gain.exponentialRampToValueAtTime(0.01, time + duration);
+                
+                osc.connect(env);
+                env.connect(audioContext.destination);
+                
+                osc.start(time);
+                osc.stop(time + duration);
+            } catch (e) {
+                // Audio context might not be ready
+            }
+        }
+        
+        let startTime = Date.now();
+        let frameCount = 0;
+        
+        function animate() {
+            const elapsed = (Date.now() - startTime) * 0.001;
+            frameCount++;
+            
+            // Update particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.z += p.vz;
+                
+                // Spiral attractor
+                const dist = Math.sqrt(p.x*p.x + p.z*p.z);
+                const angle = Math.atan2(p.z, p.x);
+                
+                const targetX = Math.cos(angle + elapsed * 2) * (dist * 0.99);
+                const targetZ = Math.sin(angle + elapsed * 2) * (dist * 0.99);
+                
+                p.vx += (targetX - p.x) * 0.001;
+                p.vz += (targetZ - p.z) * 0.001;
+                
+                p.vy += Math.sin(elapsed + p.life) * 0.001;
+                
+                // Damping
+                p.vx *= 0.99;
+                p.vy *= 0.99;
+                p.vz *= 0.99;
+                
+                // Color animation
+                p.color[0] = 0.5 + 0.5 * Math.sin(elapsed + p.life * 10);
+                p.color[1] = 0.3 + 0.7 * Math.sin(elapsed * 0.5 + p.life * 5);
+                p.color[2] = 0.8 + 0.2 * Math.cos(elapsed * 1.5 + p.life * 8);
+            });
+            
+            updateBuffers();
+            
+            // Set up buffers
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.DYNAMIC_DRAW);
+            gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 0, 0);
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.DYNAMIC_DRAW);
+            gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+            
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.DYNAMIC_DRAW);
+            
+            // Set up matrices
+            const aspect = canvas.width / canvas.height;
+            const projMatrix = createPerspectiveMatrix(Math.PI / 4, aspect, 0.1, 100);
+            
+            const eyeDist = 5 + Math.sin(elapsed * 0.3) * 2;
+            const viewMatrix = createViewMatrix(
+                Math.cos(elapsed * 0.2) * eyeDist,
+                2 + Math.sin(elapsed * 0.15) * 1.5,
+                Math.sin(elapsed * 0.2) * eyeDist,
+                0, 0, 0
+            );
+            
+            let modelMatrix = createIdentityMatrix();
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.5, 0, 1, 0);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.3, 1, 0, 0);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.2, 0, 0, 1);
+            
+            gl.uniformMatrix4fv(projMatrixLoc, false, projMatrix);
+            gl.uniformMatrix4fv(viewMatrixLoc, false, viewMatrix);
+            gl.uniformMatrix4fv(modelMatrixLoc, false, modelMatrix);
+            
+            // Clear and draw
+            gl.clearColor(0, 0, 0.05, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            
+            gl.drawElements(gl.POINTS, indices.length, gl.UNSIGNED_SHORT, 0);
+            
+            // Show credits at the end
+            if (elapsed > 14) {
+                document.getElementById('credits').classList.add('show');
+            }
+            
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
