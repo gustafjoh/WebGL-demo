@@ -262,7 +262,10 @@
         
         // Create particles for visual effect
         const particles = [];
-        const particleCount = 5000;
+        const particleCount = 8000;
+        const orbitParticles = [];
+        const energyBurst = [];
+        const geometryLines = [];
         
         function generateParticles() {
             for (let i = 0; i < particleCount; i++) {
@@ -287,7 +290,46 @@
             }
         }
         
+        function generateOrbitParticles() {
+            for (let i = 0; i < 1500; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const orbitRadius = 3 + Math.random() * 4;
+                const y = (Math.random() - 0.5) * 3;
+                const speed = 0.015 / Math.sqrt(orbitRadius);
+                
+                orbitParticles.push({
+                    angle: angle,
+                    radius: orbitRadius,
+                    y: y,
+                    x: Math.cos(angle) * orbitRadius,
+                    z: Math.sin(angle) * orbitRadius,
+                    speed: speed,
+                    color: [
+                        0.1 + Math.random() * 0.9,
+                        0.4 + Math.random() * 0.6,
+                        0.5 + Math.random() * 0.5
+                    ]
+                });
+            }
+        }
+        
+        function generateGeometryLines() {
+            geometryLines.length = 0;
+            for (let i = 0; i < 60; i++) {
+                const angle = (i / 60) * Math.PI * 2;
+                const radius = 4;
+                geometryLines.push({
+                    x: Math.cos(angle) * radius,
+                    z: Math.sin(angle) * radius,
+                    y: -2 + (i % 30) * 0.15,
+                    color: [0.1 + Math.sin(i * 0.1) * 0.9, 0.5 + Math.cos(i * 0.1) * 0.5, 0.8]
+                });
+            }
+        }
+        
         generateParticles();
+        generateOrbitParticles();
+        generateGeometryLines();
         
         // Create vertex buffers
         const positions = [];
@@ -299,11 +341,28 @@
             colors.length = 0;
             indices.length = 0;
             
+            // Main particles
             particles.forEach((p, i) => {
                 positions.push(p.x, p.y, p.z);
                 const col = p.color;
                 colors.push(col[0], col[1], col[2]);
                 indices.push(i);
+            });
+            
+            // Orbit particles
+            orbitParticles.forEach((p, i) => {
+                positions.push(p.x, p.y, p.z);
+                const col = p.color;
+                colors.push(col[0], col[1], col[2]);
+                indices.push(particleCount + i);
+            });
+            
+            // Geometry lines
+            geometryLines.forEach((p, i) => {
+                positions.push(p.x, p.y, p.z);
+                const col = p.color;
+                colors.push(col[0], col[1], col[2]);
+                indices.push(particleCount + orbitParticles.length + i);
             });
         }
         
@@ -317,51 +376,202 @@
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
         
-        // Music generation
+        // Music generation with beat synchronization
         function generateMusic() {
             if (!audioContext) return;
             
             const now = audioContext.currentTime;
-            const duration = 32; // 32 second loop for richer progression
+            const bpm = 120;
+            const beatDuration = 60 / bpm;
+            const loopDuration = beatDuration * 64;
             
-            // Create multiple layers of synth sounds
-            for (let beat = 0; beat < 64; beat++) {
-                const time = now + (beat * duration / 64);
+            // Create multiple layers synchronized to beat
+            for (let beat = 0; beat < 256; beat++) {
+                const beatTime = now + (beat * beatDuration);
+                const beatInPattern = beat % 64;
                 
-                // Bassline - deeper and punchier
-                const bassPattern = [55, 55, 82, 82, 110, 110, 82, 82, 
-                                    74, 74, 98, 98, 123, 123, 98, 98][beat % 16];
-                playNote(bassPattern, time, 0.15, 0.45, 'sine', 0.4);
+                // Powerful bassline - driving the rhythm
+                const bassLine = [
+                    55, 55, 82, 73,  // Bar 1
+                    110, 110, 98, 110,  // Bar 2
+                    82, 82, 98, 110,  // Bar 3
+                    123, 110, 98, 110  // Bar 4
+                ];
+                const bassFrq = bassLine[beat % 16];
+                playNote(bassFrq, beatTime, 0.08, beatDuration * 0.9, 'sine', 0.5);
                 
-                // Sub-bass for low end
-                if (beat % 8 === 0) {
-                    playNote(bassPattern * 0.5, time, 0.1, 0.7, 'sine', 0.25);
-                }
-                
-                // Lead melody - more dynamic
-                if (beat % 2 === 0) {
-                    const leadPattern = [440, 494, 554, 587, 659, 587, 523, 587,
-                                        493, 554, 587, 659, 740, 659, 587, 659][Math.floor(beat / 2) % 16];
-                    playNote(leadPattern * 2, time + 0.05, 0.1, 0.35, 'triangle', 0.2);
-                }
-                
-                // Harmony - adds richness
+                // Deep sub-bass every other beat
                 if (beat % 4 === 0) {
-                    const harmonyFreq = [330, 370, 415, 440, 494, 440, 392, 440][Math.floor(beat / 4) % 8];
-                    playNote(harmonyFreq, time + 0.1, 0.08, 0.4, 'sine', 0.15);
+                    playNote(bassFrq * 0.5, beatTime, 0.05, beatDuration * 1.5, 'sine', 0.35);
                 }
                 
-                // Bright pad - every 8 beats for atmosphere
-                if (beat % 8 === 0) {
-                    const padFreq = [261.63, 293.66, 329.63, 349.23][Math.floor(beat / 8) % 4];
-                    playNote(padFreq, time, 0.2, 1.5, 'sine', 0.1);
-                }
-                
-                // Percussion synth - adds rhythm
+                // Energetic lead melody
                 if (beat % 2 === 0) {
-                    playPercussion(time, beat % 8);
+                    const leadPattern = [
+                        587, 659, 740, 880,  // Ascending
+                        987, 880, 740, 880,  // Peak
+                        659, 740, 880, 987,  // High section
+                        1174, 987, 880, 987  // Climax
+                    ];
+                    const leadIdx = Math.floor(beat / 2) % 16;
+                    playNote(leadPattern[leadIdx], beatTime + 0.02, 0.06, beatDuration * 0.7, 'triangle', 0.3);
+                }
+                
+                // Harmonic pad
+                if (beat % 4 === 0) {
+                    const harmonyPattern = [330, 392, 440, 494, 523, 494, 440, 392];
+                    const harmonyFreq = harmonyPattern[(beatInPattern / 4) % 8];
+                    playNote(harmonyFreq, beatTime, 0.1, beatDuration * 1.8, 'sine', 0.25);
+                }
+                
+                // Shimmering high notes
+                if (beat % 3 === 0) {
+                    const shimmerFreq = 1046 + Math.sin(beat * 0.3) * 200;
+                    playNote(shimmerFreq, beatTime + 0.04, 0.05, beatDuration * 0.5, 'sine', 0.15);
+                }
+                
+                // Kick drum with variation
+                if (beat % 2 === 0) {
+                    playKickDrum(beatTime, beat % 8);
+                }
+                
+                // Snare on backbeat
+                if (beat % 4 === 2) {
+                    playSnare(beatTime);
+                }
+                
+                // Hi-hat rhythm for groove
+                if (beat % 1 === 0) {
+                    playHiHat(beatTime, beat % 32);
+                }
+                
+                // Spacey laser synth
+                if (beat % 8 === 4) {
+                    playLaserSynth(beatTime, beat);
+                }
+                
+                // Reverse bass hits for drama
+                if (beat % 16 === 0) {
+                    playReverseBass(beatTime);
                 }
             }
+        }
+        
+        function playKickDrum(time, variation) {
+            if (!audioContext) return;
+            try {
+                const osc = audioContext.createOscillator();
+                const env = audioContext.createGain();
+                
+                // Pitch sweep for kick
+                osc.frequency.setValueAtTime(200, time);
+                osc.frequency.exponentialRampToValueAtTime(50, time + 0.15);
+                
+                env.gain.setValueAtTime(0.8, time);
+                env.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+                
+                osc.connect(env);
+                env.connect(audioContext.destination);
+                
+                osc.start(time);
+                osc.stop(time + 0.2);
+            } catch (e) {}
+        }
+        
+        function playSnare(time) {
+            if (!audioContext) return;
+            try {
+                const noise = audioContext.createBufferSource();
+                const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.15, audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < buffer.length; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                noise.buffer = buffer;
+                
+                const env = audioContext.createGain();
+                env.gain.setValueAtTime(0.6, time);
+                env.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+                
+                noise.connect(env);
+                env.connect(audioContext.destination);
+                
+                noise.start(time);
+                noise.stop(time + 0.15);
+            } catch (e) {}
+        }
+        
+        function playHiHat(time, pattern) {
+            if (!audioContext) return;
+            try {
+                const noise = audioContext.createBufferSource();
+                const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.08, audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < buffer.length; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                noise.buffer = buffer;
+                
+                const filter = audioContext.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 8000;
+                
+                const env = audioContext.createGain();
+                const volume = pattern % 2 === 0 ? 0.2 : 0.1;
+                env.gain.setValueAtTime(volume, time);
+                env.gain.exponentialRampToValueAtTime(0.01, time + 0.08);
+                
+                noise.connect(filter);
+                filter.connect(env);
+                env.connect(audioContext.destination);
+                
+                noise.start(time);
+                noise.stop(time + 0.08);
+            } catch (e) {}
+        }
+        
+        function playLaserSynth(time, beat) {
+            if (!audioContext) return;
+            try {
+                const osc = audioContext.createOscillator();
+                const env = audioContext.createGain();
+                
+                const startFreq = 800 + Math.sin(beat * 0.5) * 400;
+                const endFreq = 200;
+                
+                osc.frequency.setValueAtTime(startFreq, time);
+                osc.frequency.exponentialRampToValueAtTime(endFreq, time + 0.3);
+                
+                env.gain.setValueAtTime(0.4, time);
+                env.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+                
+                osc.connect(env);
+                env.connect(audioContext.destination);
+                
+                osc.start(time);
+                osc.stop(time + 0.3);
+            } catch (e) {}
+        }
+        
+        function playReverseBass(time) {
+            if (!audioContext) return;
+            try {
+                const osc = audioContext.createOscillator();
+                const env = audioContext.createGain();
+                
+                osc.frequency.setValueAtTime(100, time);
+                osc.frequency.exponentialRampToValueAtTime(200, time + 0.4);
+                
+                env.gain.setValueAtTime(0.05, time);
+                env.gain.linearRampToValueAtTime(0.5, time + 0.3);
+                env.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
+                
+                osc.connect(env);
+                env.connect(audioContext.destination);
+                
+                osc.start(time);
+                osc.stop(time + 0.4);
+            } catch (e) {}
         }
         
         function playPercussion(time, beatPos) {
@@ -425,21 +635,23 @@
         
         let startTime = Date.now();
         let frameCount = 0;
+        let beatPhase = 0;
         
         function animate() {
             const elapsed = (Date.now() - startTime) * 0.001;
+            const bpm = 120;
+            const beatDuration = 60 / bpm;
+            beatPhase = (elapsed / beatDuration) % 64;
             frameCount++;
             
-            // Update particles
+            // Update main particles with black hole physics
             particles.forEach(p => {
                 p.x += p.vx;
                 p.y += p.vy;
                 p.z += p.vz;
                 
-                // Distance to center (black hole)
                 const dist = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
                 
-                // Black hole accretion - pulls particles toward center with gravity
                 if (dist > 0.1) {
                     const gravityStrength = 0.15 / (dist * dist + 0.1);
                     const dirX = -p.x / dist;
@@ -451,7 +663,6 @@
                     p.vz += dirZ * gravityStrength;
                 }
                 
-                // Angular momentum - creates whirling motion
                 const angle = Math.atan2(p.z, p.x);
                 const xyDist = Math.sqrt(p.x*p.x + p.z*p.z);
                 
@@ -461,26 +672,53 @@
                     p.vz -= Math.cos(angle) * angularForce * xyDist;
                 }
                 
-                // Slight turbulence
                 p.vy += Math.sin(elapsed * 2 + p.life * 5) * 0.0008;
                 
-                // Friction increases near center (event horizon effect)
                 const friction = Math.max(0.97, 0.985 + Math.min(0.015, dist * 0.01));
                 p.vx *= friction;
                 p.vy *= friction;
                 p.vz *= friction;
                 
-                // Color changes: blue/cyan when far, red/orange as approaching center
                 const proximityToCenter = Math.max(0, Math.min(1, (5 - dist) / 5));
                 p.color[0] = 0.3 + proximityToCenter * 0.8 + 0.3 * Math.sin(elapsed + p.life);
                 p.color[1] = 0.2 + (1 - proximityToCenter) * 0.8 + 0.2 * Math.cos(elapsed * 0.7);
                 p.color[2] = 0.8 - proximityToCenter * 0.5 + 0.2 * Math.sin(elapsed * 1.5);
                 
-                // Brightness increases near center
                 const brightness = 0.8 + proximityToCenter * 0.2 + Math.sin(elapsed * 4 + p.life * 15) * 0.1;
                 p.color[0] *= brightness;
                 p.color[1] *= brightness;
                 p.color[2] *= brightness;
+            });
+            
+            // Update orbit particles
+            orbitParticles.forEach(p => {
+                p.angle += p.speed;
+                p.x = Math.cos(p.angle) * p.radius;
+                p.z = Math.sin(p.angle) * p.radius;
+                
+                const beatInfluence = Math.sin(beatPhase * Math.PI * 2 / 64) * 0.3;
+                p.y += Math.sin(elapsed * 0.5 + p.radius) * 0.01 + beatInfluence * 0.02;
+                
+                p.color[0] = 0.2 + Math.sin(elapsed * 1.5 + p.angle) * 0.8;
+                p.color[1] = 0.3 + Math.cos(elapsed * 1.2 + p.angle) * 0.7;
+                p.color[2] = 0.6 + Math.sin(elapsed * 0.8 + p.angle) * 0.4;
+            });
+            
+            // Update geometry lines with beat synchronization
+            geometryLines.forEach((line, i) => {
+                const beatSine = Math.sin(beatPhase * Math.PI * 2 / 64);
+                const beatCos = Math.cos(beatPhase * Math.PI * 2 / 64);
+                
+                const baseAngle = (i / geometryLines.length) * Math.PI * 2;
+                const radius = 4 + beatSine * 0.5;
+                
+                line.x = Math.cos(baseAngle + elapsed * 0.3) * radius;
+                line.z = Math.sin(baseAngle + elapsed * 0.3) * radius;
+                line.y = -2 + (i % 30) * 0.15 + beatCos * 0.3;
+                
+                line.color[0] = 0.3 + beatSine * 0.7;
+                line.color[1] = 0.5 + beatCos * 0.5;
+                line.color[2] = 0.8 + Math.sin(elapsed * 2) * 0.2;
             });
             
             updateBuffers();
@@ -501,18 +739,21 @@
             const aspect = canvas.width / canvas.height;
             const projMatrix = createPerspectiveMatrix(Math.PI / 4, aspect, 0.1, 100);
             
-            const eyeDist = 5 + Math.sin(elapsed * 0.3) * 2;
+            const beatSine = Math.sin(beatPhase * Math.PI * 2 / 64);
+            const beatCos = Math.cos(beatPhase * Math.PI * 2 / 64);
+            
+            const eyeDist = 5 + Math.sin(elapsed * 0.2) * 2 + beatSine * 0.5;
             const viewMatrix = createViewMatrix(
-                Math.cos(elapsed * 0.2) * eyeDist,
-                2 + Math.sin(elapsed * 0.15) * 1.5,
-                Math.sin(elapsed * 0.2) * eyeDist,
+                Math.cos(elapsed * 0.2) * eyeDist + beatCos * 0.3,
+                2 + Math.sin(elapsed * 0.15) * 1.5 + beatSine * 0.3,
+                Math.sin(elapsed * 0.2) * eyeDist + beatCos * 0.3,
                 0, 0, 0
             );
             
             let modelMatrix = createIdentityMatrix();
-            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.35, 0, 1, 0);
-            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.25, 1, 0, 0);
-            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.15, 0, 0, 1);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.35 + beatPhase * 0.05, 0, 1, 0);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.25 + beatCos * 0.1, 1, 0, 0);
+            modelMatrix = rotateMatrix(modelMatrix, elapsed * 0.15 + beatSine * 0.05, 0, 0, 1);
             
             gl.uniformMatrix4fv(projMatrixLoc, false, projMatrix);
             gl.uniformMatrix4fv(viewMatrixLoc, false, viewMatrix);
@@ -525,7 +766,7 @@
             gl.drawElements(gl.POINTS, indices.length, gl.UNSIGNED_SHORT, 0);
             
             // Show credits at the end
-            if (elapsed > 14) {
+            if (elapsed > 29) {
                 document.getElementById('credits').classList.add('show');
             }
             
